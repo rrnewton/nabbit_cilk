@@ -35,7 +35,8 @@
 #include <iostream>
 
 
-#include <cilk.h>
+#include <cilk/cilk_api.h>
+#include <cilk/cilk.h>
 #include "sample_dag_node.h"
 
 typedef enum {
@@ -102,11 +103,12 @@ void run_test(SampleTestType test_type) {
   }  
 }
 				
-int cilk_main(int argc, char *argv[])
+int main(int argc, char *argv[])
 {
 
   SampleTestType test_type = TEST_SERIAL;
-  int P = cilk::current_worker_count();
+  //  int P = cilk::current_worker_count();
+  int P = __cilkrts_get_total_workers();
   
   if (argc >= 2) {
     test_type = (SampleTestType)atoi(argv[1]);

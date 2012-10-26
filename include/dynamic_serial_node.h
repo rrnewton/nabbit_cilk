@@ -198,7 +198,7 @@ void DynamicSerialNode::mark_as_expanded() {
 					    NODE_EXPANDED);
   if (!valid) {
     printf("Mark as expanded: Worker %d, key = %llu, status = %d\n",
-	   cilk::current_worker_id(),
+	   GET_WORKER_ID, // cilk::current_worker_id(),
 	   this->key,
 	   this->status);
   }
@@ -371,7 +371,8 @@ void DynamicSerialNode::compute_and_notify() {
 #if NABBIT_PRINT_DEBUG == 1
   printf("COMPUTE AND NOTIFY called on key %llu, worker %d\n",
   	 this->key,
-	 cilk::current_worker_id());
+	 GET_WORKER_ID, //cilk::current_worker_id()
+        );
 #endif
   this->Compute();
   this->mark_as_computed();
@@ -424,7 +425,7 @@ void DynamicSerialNode::compute_and_notify() {
 
 #if NABBIT_PRINT_DEBUG == 1
 	printf("Worker %d enabling current_succ with key = %llu.  Node's status is %d\n",
-	       cilk::current_worker_id(),
+	       GET_WORKER_ID, // cilk::current_worker_id(),
 	       current_succ->key,
 	       current_succ->status);
 #endif

@@ -28,6 +28,10 @@
 #ifndef __DAG_STATUS_H_
 #define __DAG_STATUS_H_
 
+// We can use the new Intel Cilk runtime api to get at a worker ID:
+#include <cilk/cilk_api.h>
+#define GET_WORKER_ID __cilkrts_get_worker_number()
+// #define GET_WORKER_ID -999
 
 // Possible status for a node.
 typedef enum { NODE_UNVISITED=0,
@@ -36,8 +40,6 @@ typedef enum { NODE_UNVISITED=0,
 	       NODE_COMPUTED=3,
 	       NODE_COMPLETED=4,
 	       NODE_DEAD=5 } DAGNodeStatus;
-
-
 
 #endif
 

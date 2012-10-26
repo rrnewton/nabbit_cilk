@@ -197,7 +197,7 @@ void DynamicNabbitNode::mark_as_expanded() {
 					    NODE_EXPANDED);
   if (!valid) {
     printf("Mark as expanded: Worker %d, key = %llu, status = %d\n",
-	   cilk::current_worker_id(),
+	   GET_WORKER_ID, // cilk::current_worker_id(),
 	   this->key,
 	   this->status);
   }
@@ -318,7 +318,7 @@ void DynamicNabbitNode::try_init_pred_and_compute(long long pred_key) {
 	printf("this node has key %llu. actualPred node has key %llu (should = %llu)\n",
 	       this->key, actualPredNode->key, pred_key);
 	printf("Worker %d, key %llu, enabled at finish_spawn_children\n",
-	       cilk::current_worker_id(),
+	       GET_WORKER_ID, // cilk::current_worker_id(),
 	       this->key);
 #endif
 	//	cilk_spawn this->compute_and_notify();
@@ -365,7 +365,8 @@ void DynamicNabbitNode::compute_and_notify() {
 #if NABBIT_PRINT_DEBUG == 1
   printf("COMPUTE AND NOTIFY called on key %llu, worker %d\n",
   	 this->key,
-	 cilk::current_worker_id());
+	 GET_WORKER_ID); // cilk::current_worker_id());
+         
 #endif
   this->Compute();
   this->mark_as_computed();
@@ -415,7 +416,7 @@ void DynamicNabbitNode::compute_and_notify() {
 
 #if NABBIT_PRINT_DEBUG == 1
 	printf("Worker %d enabling current_succ with key = %llu.  Node's status is %d\n",
-	       cilk::current_worker_id(),
+	       GET_WORKER_ID, // cilk::current_worker_id(),
 	       current_succ->key,
 	       current_succ->status);
 #endif

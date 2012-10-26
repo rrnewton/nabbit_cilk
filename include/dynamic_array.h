@@ -39,7 +39,9 @@
  * previous inserts complete before it can continue.
  */
 
-#include <cilk_mutex.h>
+// #include <cilk_mutex.h>
+#include <dag_status.h>
+#include <stdio.h>
 
 #define PRINT_LOCK_ACQUIRE_TRACE 0
 
@@ -84,7 +86,7 @@ class DynamicArray {
   volatile int current_size;
   volatile int inserted_elements;
   volatile int resize_lock;
-  cilk::mutex test_resize_mutex;
+  //  cilk::mutex test_resize_mutex;
   DynamicArrayBuffer<T>* old_arrays;
 
   bool try_acquire_resize_lock();
@@ -293,7 +295,7 @@ void DynamicArray<T>::resize_array_grow() {
 
   if (PRINT_LOCK_ACQUIRE_TRACE) {
     printf("Worker %d Acquired the lock here. size = %d, inserted_elements = %d, capacity = %d\n",
-	   cilk::current_worker_id(),
+	   GET_WORKER_ID, // cilk::current_worker_id(),
 	   this->current_size,
 	   this->inserted_elements,
 	   this->capacity);
@@ -308,7 +310,7 @@ void DynamicArray<T>::resize_array_grow() {
   if (this->current_size < this->capacity) {
     if (PRINT_LOCK_ACQUIRE_TRACE) {
       printf("Worker %d Release lock for unneeded resize... current size = %d, current cap = %d\n",
-	     cilk::current_worker_id(),
+	     GET_WORKER_ID, // cilk::current_worker_id(),
 	     this->current_size,
 	     this->capacity);
     }
@@ -364,7 +366,7 @@ void DynamicArray<T>::resize_array_grow() {
 
   if (PRINT_LOCK_ACQUIRE_TRACE) {
     printf("Worker %d Release lock. current size = %d, current cap = %d\n",
-	   cilk::current_worker_id(),
+	   GET_WORKER_ID, // cilk::current_worker_id(),
 	   this->current_size,
 	   this->capacity);
   }

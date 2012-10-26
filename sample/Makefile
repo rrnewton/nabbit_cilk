@@ -5,10 +5,10 @@
 DAGEVAL_DIR=../include
 
 
-CILKPP	= cilk++
+CILKPP	= icc
 LIBARG	=  -O2 -Wall # -lmiser
 TARGET = sample
-SRC	= $(addsuffix .cilk,$(TARGET))
+SRC	= $(addsuffix .cpp,$(TARGET))
 
 
 # The extra include files
