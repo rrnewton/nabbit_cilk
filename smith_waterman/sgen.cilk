@@ -1,0 +1,141 @@
+#include <stdlib.h>
+#include <stdio.h>
+
+#include "image.h"
+
+const int NUM_IMAGES = 4;
+const int GAP_SIZE = 75;
+
+
+struct FileData {
+  const char* fnames[4];
+  int maxvals[4];
+  const char* output_name;
+};
+
+
+const int NUM_TESTS = 3;
+FileData vars[NUM_TESTS] =
+  {
+    { { "save/runimg_StaticNabbit_N1000_pid13019/cmp_StaticNabbit_N1000_B16_P8",
+	"save/runimg_Wavefront_N1000_pid13011/cmp_Wavefront_N1000_B16_P8",
+	"save/runimg_DC_GenericK_N1000_pid13003/cmp_DC_GenericK_N1000_B16_P8",
+	"save/runimg_DC_K2_N1000_pid18521/cmp_DC_K2_N1000_B16_P8" },
+      { 10, 12, 11, 17 },
+      "merged_N1000_B16_P8" },
+    { { "save/runimg_StaticNabbit_N2000_pid13051/cmp_StaticNabbit_N2000_B16_P8",
+        "save/runimg_Wavefront_N2000_pid13043/cmp_Wavefront_N2000_B16_P8",
+	"save/runimg_DC_GenericK_N2000_pid13035/cmp_DC_GenericK_N2000_B16_P8",
+	"save/runimg_DC_K2_N2000_pid18529/cmp_DC_K2_N2000_B16_P8" },
+      { 84, 91, 89, 116 },
+      "merged_N2000_B16_P8" },
+
+    { { "save/runimg_StaticNabbit_N5000_pid15572/cmp_StaticNabbit_N5000_B16_P8",
+        "save/runimg_Wavefront_N5000_pid15546/cmp_Wavefront_N5000_B16_P8",
+        "save/runimg_DC_GenericK_N5000_pid13165/cmp_DC_GenericK_N5000_B16_P8",
+	"save/runimg_DC_K2_N5000_pid18537/cmp_DC_K2_N5000_B16_P8" },
+      { 1313, 1424, 1324, 1481 },
+      "merged_N5000_B16_P8" },
+  };
+
+
+
+
+
+
+
+
+
+
+
+const int NUM_TESTS3 = 1;
+FileData var3[NUM_TESTS3] =
+  {
+/*     { { "save/runimg_StaticNabbit_N1000_pid12150/cmp_StaticNabbit_N1000_B16_P16", */
+/* 	"save/runimg_Wavefront_N1000_pid12134/cmp_Wavefront_N1000_B16_P16", */
+/* 	"save/runimg_DC_GenericK_N1000_pid12118/cmp_DC_GenericK_N1000_B16_P16", */
+/* 	"save/runimg_DC_K2_N1000_pid12102/cmp_DC_K2_N1000_B16_P16" }, */
+/*       { 8, 10, 10, 23 }, */
+/*       "merged_N1000_B16_P16" }, */
+/*     { { "save/runimg_StaticNabbit_N2000_pid12215/cmp_StaticNabbit_N2000_B16_P16", */
+/* 	"save/runimg_Wavefront_N2000_pid12199/cmp_Wavefront_N2000_B16_P16", */
+/* 	"save/runimg_DC_GenericK_N2000_pid12182/cmp_DC_GenericK_N2000_B16_P16", */
+/* 	"save/runimg_DC_K2_N2000_pid12166/cmp_DC_K2_N2000_B16_P16" },  */
+/*       { 65, 75, 80, 149 }, */
+/*       "merged_N2000_B16_P16" }, */
+/*     { { "save/runimg_StaticNabbit_N3000_pid12280/cmp_StaticNabbit_N3000_B16_P16", */
+/* 	"save/runimg_Wavefront_N3000_pid12264/cmp_Wavefront_N3000_B16_P16", */
+/* 	"save/runimg_DC_GenericK_N3000_pid12247/cmp_DC_GenericK_N3000_B16_P16", */
+/* 	"save/runimg_DC_K2_N3000_pid12231/cmp_DC_K2_N3000_B16_P16" },  */
+/*       { 229, 267, 254, 424 }, */
+/*       "merged_N3000_B16_P16" }, */
+/*     {  {"save/runimg_StaticNabbit_N4000_pid12359/cmp_StaticNabbit_N4000_B16_P16", */
+/* 	"save/runimg_Wavefront_N4000_pid12342/cmp_Wavefront_N4000_B16_P16", */
+/* 	"save/runimg_DC_GenericK_N4000_pid12320/cmp_DC_GenericK_N4000_B16_P16", */
+/* 	"save/runimg_DC_K2_N4000_pid12296/cmp_DC_K2_N4000_B16_P16" }, */
+/*        { 589, 653, 633, 1079 }, */
+/*        "merged_N4000_B16_P16" }, */
+    { { "save/runimg_StaticNabbit_N5000_pid13597/cmp_StaticNabbit_N5000_B16_P16",
+	"save/runimg_Wavefront_N5000_pid13050/cmp_Wavefront_N5000_B16_P16",
+	"save/runimg_DC_GenericK_N5000_pid12544/cmp_DC_GenericK_N5000_B16_P16",
+	"save/runimg_DC_K2_N5000_pid12385/cmp_DC_K2_N5000_B16_P16" },
+      { 1261, 1404, 1355, 1939 },
+      "merged_N5000_B16_P16" },
+  };
+
+
+void proc_file_data(FileData* f) {
+
+  int image_count = 0;
+
+  while (1) {
+    int num_finished = 0;
+
+
+    printf("./image_merge ");
+
+
+    for (int i = 0; i < 4; i++) {
+      int ival = image_count;
+
+      if (ival >= f->maxvals[i]) {
+	ival = f->maxvals[i];
+	num_finished++;
+      }      
+      printf("%s_k%05d.ppm ",
+	     f->fnames[i],
+	     ival);      
+    }
+
+    printf("%s_k%05d.ppm\n",
+	   f->output_name, image_count);
+
+    if (num_finished == 4) {
+      break;
+    }
+    image_count++;
+  }  
+}
+
+
+int cilk_main(int argc, char* argv[]) {
+
+
+  if (0) {
+    printf("!/bin/bash\n");
+    for (int i = 0; i < NUM_TESTS; i++) {
+      printf("# Processing test %d\n", i);
+      proc_file_data(&vars[i]);
+    }
+  }
+
+  if (1) {
+    printf("!/bin/bash\n");
+    for (int i = 0; i < NUM_TESTS3; i++) {
+      printf("# Processing test %d\n", i);
+      proc_file_data(&var3[i]);
+    }
+  }
+
+  return 0;   
+}

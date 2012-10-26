@@ -1,0 +1,48 @@
+Random DAG Microbenchmark for Nabbit
+-------------------------------------------
+
+This directory contains code for the random DAG microbenchmark for
+testing Nabbit.
+
+In the random DAG microbenchmark, we construct a random DAG (see
+GenerateChildrenMap in det_count.h and GenerateTestDAG in
+count_paths.h).  Then, we count the number of paths through the DAG
+from source to sink in parallel using Nabbit.
+
+
+For static Nabbit, the dag is created in "GenerateTestDAG" in
+count_paths.h.
+
+For dynamic Nabbit, the dag is "created" by looking up the children of
+each node during the Init() phase.
+
+
+count_paths_node.h: Defines Compute() method and graph creation for
+		    static Nabbit.
+
+dyn_count_node.h: Defines the dynamic Nabbit node for this
+		  microbenchmark.
+
+det_count.h: Defines some common methods between the two
+	     implementations.
+
+detpath_test.cilk: Main program to run the benchmark.
+
+
+
+To run the benchmark:
+
+./detpath_test <R> <test_type> <NodeWork> <UseParallelNodes> <dag_type> -cilk_set_worker_count=$P
+
+R = MAX_DAG_ID (which is U from the Nabbit paper).
+test_type = which experiment to run (as defined by the enum in detpath_test.cilk)
+NodeWork = (W from the Nabbit paper)
+UseParallelNodes = 1 if nodes should perform the W work in parallel, 0 otherwise.
+dag_type = 0 for random dag
+	   1 for a pipeline dag.
+
+TODO:
+ Nabbit currently does not work well with pipeline DAG because the
+ task graph has large span / depth, which leads to a large Cilk++
+ stack depth.  Finding elegant ways to deal with this limitation is on
+ the agenda for future work.

@@ -1,0 +1,128 @@
+#include <stdlib.h>
+#include <stdio.h>
+
+#include "image.h"
+
+const int NUM_IMAGES = 4;
+const int GAP_SIZE = 75;
+
+int cilk_main(int argc, char* argv[]) {
+  
+  color_image* m[NUM_IMAGES];
+
+  assert(argc == NUM_IMAGES+2);  
+  int num_images = argc-2;
+
+  assert(num_images == 4);
+  for (int i = 0; i < num_images; i++) {
+    printf("Image %d: %s\n",
+	   i, argv[i+1]);
+
+    m[i] = load_color_image_from_file(argv[i+1]);
+
+    if (i > 0) {
+      assert(m[i]->width == m[0]->width);
+      assert(m[i]->height == m[0]->height);
+    }
+  }
+
+  int width = 2*m[0]->width+ GAP_SIZE;
+  int height = (m[0]->height+ GAP_SIZE)*2;
+
+  color_image* output_image;
+
+  // The 64 value is arbitrary (we don't expect # of processors >=
+  // 64).
+  output_image = create_color_image(width, height, 64);
+
+  for (int u = 0; u < m[0]->height; u++) {
+    for (int v = 0; v < m[0]->width; v++) {
+      int rgb_array[3];
+      get_color_pixel(m[0], u, v, rgb_array, 255);
+      set_color_pixel(output_image, u, v,
+		      rgb_array[0],
+		      rgb_array[1],
+		      rgb_array[2]);
+    }
+    
+    for (int v = 0; v < m[1]->width; v++) {
+      int rgb_array[3];
+      get_color_pixel(m[1], u, v, rgb_array, 255);
+      set_color_pixel(output_image, u,
+		      v + m[0]->width + GAP_SIZE,
+		      rgb_array[0], 
+		      rgb_array[1], 
+		      rgb_array[2]);    
+    }
+  }
+
+  for (int u = 0; u < m[2]->height; u++) {
+    for (int v = 0; v < m[0]->width; v++) {
+      int rgb_array[3];
+      get_color_pixel(m[2], u, v, rgb_array, 255);
+      set_color_pixel(output_image,
+		      u + m[0]->height + GAP_SIZE,
+		      v,
+		      rgb_array[0],
+		      rgb_array[1],
+		      rgb_array[2]);
+    }
+
+    for (int v = 0; v < m[3]->width; v++) {
+      int rgb_array[3];
+      get_color_pixel(m[3], u, v, rgb_array, 255);
+      set_color_pixel(output_image,
+		      u + m[0]->height + GAP_SIZE,
+		      v + m[0]->width + GAP_SIZE,
+		      rgb_array[0],
+		      rgb_array[1],
+		      rgb_array[2]);
+    }
+  }
+
+
+  // Set white space in gaps.
+
+  // Set gaps in columns.
+  for (int u = 0; u < m[0]->height + m[2]->height + 2*GAP_SIZE; u++) {
+    for (int v = 0; v < GAP_SIZE; v++) {
+      set_color_pixel(output_image,
+		      u, 
+		      v + m[0]->width,
+		      255, 255, 255);
+      //      set_color_pixel(output_image,
+      //		      u, 
+      //		      v + m[0]->width + GAP_SIZE + m[1]->width,
+      //		      255, 255, 255);
+    }
+  }
+  // Set gaps in rows.
+  for (int u = 0; u < GAP_SIZE; u++) {
+    for (int v = 0; v < m[0]->width + m[1]->width + GAP_SIZE; v++) {
+      set_color_pixel(output_image,
+		      u + m[0]->height,
+		      v,
+		      255, 255, 255);
+      set_color_pixel(output_image,
+		      u + m[0]->height + GAP_SIZE + m[2]->height,
+		      v,
+		      255, 255, 255);
+    }
+  }
+    
+  printf("Output filename: %s\n",
+	 argv[NUM_IMAGES+1]);
+  save_color_image_to_file(argv[NUM_IMAGES+1],
+			   output_image);
+    
+  
+  for (int i = 1; i < num_images; i++) {
+    destroy_color_image(m[i]);
+  }
+  destroy_color_image(output_image);
+
+
+  return 0;
+   
+
+}

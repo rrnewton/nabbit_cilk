@@ -1,0 +1,426 @@
+// Code for the Nabbit task graph library
+//
+// Dynamic Programming benchmark.
+//
+// Copyright (c) 2010 Jim Sukha
+//
+//
+/*
+ * Permission is hereby granted, free of charge, to any person
+ * obtaining a copy of this software and associated documentation
+ * files (the "Software"), to deal in the Software without
+ * restriction, including without limitation the rights to use, copy,
+ * modify, merge, publish, distribute, sublicense, and/or sell copies
+ * of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be
+ * included in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
+ * BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
+ * ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
+
+#include <cerrno>
+#include <sys/stat.h>
+#include <sys/types.h>
+
+#include <cilk.h>
+
+#include "sw_visual.h"
+
+
+#define DEBUG_SW_VISUAL 0
+
+template <>
+void NabbitNodeRecord<SWRec>::print() {
+  printf("Node (%d, %d) to (%d, %d), ",
+	 this->data.start_i,
+	 this->data.start_j,
+	 this->data.end_i,
+	 this->data.end_j);
+  core_print();
+}
+
+
+
+#ifdef TRACK_THREAD_CPU_IDS
+
+// Logging stats for dynamic program.
+NabbitTaskGraphStats<SWRec>* sw_global_stats;
+
+void update_image_for_start_compute(color_image* cimage,
+				    NabbitNodeRecord<SWRec>* nrec,
+				    int proc_id,
+				    int image_count,
+				    double current_time,
+				    int sample_factor) {
+/*   printf("Image %d time %f: starting block (%d, %d) to (%d, %d)\n", */
+/* 	 image_count, */
+/* 	 current_time, */
+/* 	 nrec->start_i, nrec->start_j, */
+/* 	 nrec->end_i, nrec->end_j); */
+
+  // For starting a compute, sketch in the boundaries of the
+  // block.
+
+  for (int j = nrec->data.start_j/sample_factor;
+       j < nrec->data.end_j/sample_factor;
+       j++) {
+    set_image_color_for_proc(cimage,
+			     nrec->data.start_i/sample_factor,
+			     j,
+			     proc_id);
+    
+    if (nrec->data.end_i-1 > nrec->data.start_i) {
+      set_image_color_for_proc(cimage,
+			       (nrec->data.end_i - 1)/sample_factor,
+			       j,
+			       proc_id);
+    }    
+  }
+  for (int i = nrec->data.start_i/sample_factor;
+       i < nrec->data.end_i/sample_factor;
+       i++) {
+    set_image_color_for_proc(cimage,
+			     i,
+			     nrec->data.start_j/sample_factor,
+			     proc_id);
+
+    if (nrec->data.end_j-1 > nrec->data.start_j) {
+      set_image_color_for_proc(cimage,
+			       i,
+			       (nrec->data.end_j - 1)/sample_factor,
+			       proc_id);
+    }
+  }
+}
+
+void update_image_for_finish_compute(color_image* cimage,
+				     NabbitNodeRecord<SWRec>* nrec,
+				     int proc_id,
+				     int image_count,
+				     double current_time,
+				     int sample_factor) {
+  /*     printf("Image %d time %f: finishing block (%d, %d) to (%d, %d)\n", */
+/*   	 image_count, */
+/*   	 current_time, */
+/*   	 nrec->start_i, nrec->start_j, */
+/*   	 nrec->end_i, nrec->end_j); */
+
+  // Color in the entire block when we finish computing.
+  for (int i = nrec->data.start_i/sample_factor;
+       i < nrec->data.end_i/sample_factor;
+       i++) {
+    for (int j = nrec->data.start_j/sample_factor;
+	 j < nrec->data.end_j/sample_factor;
+	 j++) {
+      set_image_color_for_proc(cimage,
+			       i, j,
+			       proc_id);
+    }
+  }
+}
+
+
+void process_sw_log(int n, int B, int test_type, int P, bool verbose) {
+
+#if DEBUG_SW_VISUAL == 1
+  for (int p = 0; p < P; p++) {
+    sw_global_stats->print_timelog(p);
+    sw_global_stats->print_nodelog(p);
+  }
+#endif
+
+  color_image* comp_image;
+  char dir_prefix[100];
+  char cimage_root[100];
+  char cimage_name[100];
+  char mkdir_path[100];
+  int id = getpid();
+
+  snprintf(dir_prefix, 100,
+	   "%s_N%d_pid%d",
+	   SWTestTypeNames[test_type],
+	   n,
+	   id);
+  snprintf(mkdir_path, 100,
+	   "./runimg_%s", dir_prefix);
+  snprintf(cimage_root, 100,
+	   "cmp_%s_N%d_B%d_P%d_k",
+	   SWTestTypeNames[test_type],
+	   n,
+	   B,
+	   P);
+
+  // Make the data directory.
+  int mkdir_status;
+  mkdir_status = mkdir(mkdir_path, S_IRWXU | S_IRWXG);
+  assert((mkdir_status == 0) || (mkdir_status == EEXIST));
+  
+  int SAMPLE_FACTOR = B/4;
+  double FRAMES_PER_SEC = 30;  // frames per sec  
+  //  double FRAMES_PER_SEC = 1000;  // frames per sec
+  
+  if ((SAMPLE_FACTOR < 1) || (n <= 1000)) {
+    SAMPLE_FACTOR = 1;
+  }
+    
+  comp_image = create_color_image((n+B)/SAMPLE_FACTOR, (n+B)/SAMPLE_FACTOR, P+1);
+  // Clear the image to no-proc.
+  for (int i = 0; i < (n+B)/SAMPLE_FACTOR; i++) {
+    for (int j = 0; j < (n+B)/SAMPLE_FACTOR; j++) {
+      set_image_color_for_proc(comp_image,
+			       i, j,
+			       -1);
+    }
+  }
+
+  NabbitReplayObj* robj = new NabbitReplayObj[P];
+  double avg_cycles_per_sec = 0;
+    
+  struct timeval now;
+  gettimeofday(&now, NULL);
+
+  double min_walltime = NabbitTimers::tvToSec(now);
+  double max_simtime = 0;
+  
+  for (int p = 0; p < P; p++) {
+    robj[p].current_noderec = 0;
+    int num_records = sw_global_stats->get_num_timerecs(p);
+    assert(num_records >= 2);
+
+    NabbitTimeRecord trec;
+    trec = sw_global_stats->get_timerec(p, 0);
+    robj[p].base_rtime = trec.ts_after;
+    robj[p].base_walltime = NabbitTimers::tvToSec(trec.tv);
+    
+    //    printf("Proc %d. base_walltime is %f\n",
+    //	   p, robj[p].base_walltime);
+    
+    if (robj[p].base_walltime < min_walltime) {
+      min_walltime = robj[p].base_walltime;
+    }
+
+    NabbitTimeRecord last_rec = sw_global_stats->get_timerec(p, num_records-1);
+    double time_diff = NabbitTimers::tvToSec(last_rec.tv) - robj[p].base_walltime;
+    
+    //    printf("time_diff for %d: %f\n",
+    //	         p, time_diff);
+    if (max_simtime < time_diff) {
+      max_simtime = time_diff;
+    }
+    long long cycle_diff = last_rec.ts_after - robj[p].base_rtime;
+    assert(cycle_diff > 0);
+    robj[p].cycles_per_sec = cycle_diff / time_diff;
+    avg_cycles_per_sec += cycle_diff / time_diff;
+    //    printf("Proc %d: cycles per sec = %f\n",
+    //	   p, robj[p].cycles_per_sec);
+  }
+  avg_cycles_per_sec /= P;
+  if (verbose) {
+    printf("Average cycles per second: %f\n", avg_cycles_per_sec);
+  }
+
+  double time_interval = 1.0/FRAMES_PER_SEC;
+  //  printf("HERE: min_walltime is %f\n", min_walltime);
+
+  if (verbose) {
+    printf("Total time = %f sec. number of images = %d\n",
+	   max_simtime,
+	   1 + (int)(max_simtime / time_interval));
+  }
+
+  int image_count = 0;
+  int first_image_count = -1;
+  int last_image_count = -1;
+  
+  bool done = false;
+
+  double current_time = min_walltime;
+
+  while (!done) {
+    int num_finished = 0;
+    int records_started = 0;
+    int records_mid = 0;
+
+
+    // Play all the records in the log which are at time <= current_time
+    for (int p = 0; p < P; p++) {
+
+      while (robj[p].current_noderec < sw_global_stats->get_num_noderecs(p)) {
+/* 	printf("robj[%d].current = %d, getnumrecs = %d\n", */
+/* 	       p,  */
+/* 	       robj[p].current_noderec, */
+/* 	       sw_global_stats->get_num_timerecs(p)); */
+	NabbitNodeRecord<SWRec> nrec = sw_global_stats->get_noderec(p, robj[p].current_noderec);
+	double n_start = NabbitTimers::rtimeToSec(nrec.start_ts,
+						  robj[p].base_rtime,
+						  robj[p].base_walltime,
+						  avg_cycles_per_sec);
+	if (n_start <= current_time) {
+	  // Update image for starting to compute the block.
+	  update_image_for_start_compute(comp_image,
+					 &nrec,
+					 p,
+					 image_count,
+					 current_time,
+					 SAMPLE_FACTOR);	  
+	  records_started++;
+	  double n_end = NabbitTimers::rtimeToSec(nrec.end_ts,
+						  robj[p].base_rtime,
+						  robj[p].base_walltime,
+						  avg_cycles_per_sec);
+	  
+	  // We've finished computing this record.
+	  if (n_end <= current_time) {
+	    // Update image for finishing the compute.
+
+
+	    update_image_for_finish_compute(comp_image,
+					    &nrec,
+					    p,
+					    image_count,
+					    current_time,
+					    SAMPLE_FACTOR);
+	    robj[p].current_noderec++;
+	    continue;
+	  }
+	  else {
+	    records_mid++;
+	  }
+	}
+	break;
+      }
+    }
+
+    //    printf("Image_count %d: num_records_started = %d, num_records_mid = %d\n",
+    //	   image_count, records_started, records_mid);
+    
+    if (records_started > 0) {
+
+      if (first_image_count == -1) {
+	first_image_count = image_count;
+      }
+      last_image_count = image_count;
+
+      snprintf(cimage_name, 100,
+	       "%s/%s%05d.ppm",
+	       mkdir_path,
+	       cimage_root,
+	       image_count - first_image_count);
+      if (verbose) {
+	printf("Generating image %d at time %f (file %s). Records started = %d\n",
+	       image_count - first_image_count,
+	       current_time,
+	       cimage_name,
+	       records_started);
+      }
+      
+      save_color_image_to_file(cimage_name,
+			       comp_image);      
+    }
+    else {
+      if (verbose) {
+	printf("No nodes computed at image %d time %f\n",
+	       image_count, current_time);
+      }
+    }
+    
+    // Check if we have exhausted all the records in all P logs.
+    for (int p = 0; p < P; p++) {
+
+      //      printf("End check for %d: current_noderec = %d, num = %d\n",
+      //	     p,
+      //	     robj[p].current_noderec,
+      //	     sw_global_stats->get_num_noderecs(p));
+      if (robj[p].current_noderec == sw_global_stats->get_num_noderecs(p)) {
+	num_finished++;
+      }
+    }
+    done = (num_finished == P);
+    current_time += time_interval;
+    image_count++;
+
+    //    printf("Final: num_finished = %d. done = %d\n", num_finished, done);
+    //    printf("Current - minwall: %f\n",
+	   //	   current_time - min_walltime);
+
+    //    printf("max_sim =  %f, time_interval = %f, sum = %f\n",
+    //	   max_simtime,
+    //	   time_interval,
+    //	   max_simtime + time_interval);
+
+    //    printf("Difference: %f\n", min_walltime + max_simtime + time_interval - current_time);
+
+    if (!done) {
+      assert(current_time <= min_walltime + max_simtime + time_interval);        
+    }
+  }
+
+  if (verbose) {
+    printf("Final time: %f\n", current_time);
+  }
+
+
+
+  // Create a .dat file which can be run through ppmtompeg to
+  // generate a movie from the various image files.
+  {
+
+    char movie_name[100];
+    char param_fname[100];
+    snprintf(movie_name, 100,
+	     "mov_%s_pid%d.mpg",
+	     cimage_root, id);
+    snprintf(param_fname, 100,
+	     "runparam_%s_pid%d.dat",
+	     cimage_root, id);
+
+    FILE* f = fopen(param_fname, "w");
+    assert(f);
+    fprintf(f, "PATTERN IBBPBBPBBPBBPBB\n\n");
+    fprintf(f, "OUTPUT %s\n\n", movie_name);
+    fprintf(f, "BASE_FILE_FORMAT PPM\n\n");
+    fprintf(f, "INPUT_CONVERT *\n\n");
+    fprintf(f, "GOP_SIZE 650\n\n");
+    fprintf(f, "SLICES_PER_FRAME 1\n\n");
+    fprintf(f, "INPUT_DIR %s\n\n",
+	    mkdir_path);
+    fprintf(f, "INPUT\n\n");
+    if (first_image_count < last_image_count) {
+      fprintf(f, "%s*.ppm [%05d-%05d]\n\n",
+	      cimage_root,
+	      0,
+	      last_image_count - first_image_count);
+    }
+    else {
+      fprintf(f, "%s%05d.ppm \n\n",
+	      cimage_root,
+	      0);
+    }
+    fprintf(f, "END_INPUT\n\n");
+    fprintf(f, "PIXEL HALF\n\n");
+    fprintf(f, "RANGE 10\n\n");
+    fprintf(f, "PSEARCH_ALG LOGARITHMIC\n\n");
+    fprintf(f, "BSEARCH_ALG CROSS2\n\n");
+    fprintf(f, "IQSCALE 8\n\n");
+    fprintf(f, "PQSCALE 10\n\n");
+    fprintf(f, "BQSCALE 25\n\n");
+    fprintf(f, "REFERENCE_FRAME ORIGINAL\n\n");
+    fclose(f);
+  }
+    
+  destroy_color_image(comp_image);
+  delete[] robj;
+}
+
+#endif
+

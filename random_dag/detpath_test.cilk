@@ -1,0 +1,401 @@
+// Code for the Nabbit task graph library
+// Random DAG microbenchmark. 
+//
+// Copyright (c) 2010 Jim Sukha
+//
+//
+/*
+ * Permission is hereby granted, free of charge, to any person
+ * obtaining a copy of this software and associated documentation
+ * files (the "Software"), to deal in the Software without
+ * restriction, including without limitation the rights to use, copy,
+ * modify, merge, publish, distribute, sublicense, and/or sell copies
+ * of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be
+ * included in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
+ * BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
+ * ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
+
+#include <iostream>
+#include <cstdlib>
+#include <cilk.h>
+
+
+#include <example_util_gettime.h>
+#include "count_paths_node.h"
+#include "dyn_count_node.h"
+
+typedef enum {
+
+  COUNT_PATH_STATIC_NABBIT = 0, 
+  COUNT_PATH_STATIC_SERIAL = 1,
+  COUNT_PATH_DYNAMIC_NABBIT = 2,
+  COUNT_PATH_DYNAMIC_SERIAL = 3, 
+  COUNT_PATH_DYNAMIC_NABBIT_GEN = 4,
+  COUNT_PATH_DYNAMIC_SERIAL_GEN = 5, 
+
+  // These don't work yet.
+  COUNT_PATH_OTHER = 10, 
+} CountPathType;
+
+template <class CountNode>
+void RunDetCountPathsTest(CountPathDAGParams& params,
+			  int test_type,
+			  bool verbose) {
+
+  if (verbose) {
+    printf("DAG_Max_id = %d\n",
+	   params.MAX_DAG_ID);
+    printf("DAG_Max_degree = %d\n",
+	   params.MAX_DEGREE);
+    printf("DAG_Num_gen = %d\n",
+	   params.NUM_GEN);
+  }
+
+  long create_start_time, create_end_time;
+
+  create_start_time = example_get_time();
+  DetPathsDAGNode<CountNode>::GenerateTestDag(&params);
+  create_end_time = example_get_time();
+  
+  DetPathsDAGNode<CountNode>* rt = (DetPathsDAGNode<CountNode>*)params.root;
+
+  if (verbose) {
+    printf("Time to create DAG in seconds: %f\n",
+	   (create_end_time - create_start_time) / 1000.f);
+  }
+  
+  long start_time = example_get_time();
+  switch (test_type) {
+
+
+  case COUNT_PATH_STATIC_NABBIT:
+    {
+      DetPathsDAGNode<StaticNabbitNode>* sink = (DetPathsDAGNode<StaticNabbitNode>*)params.sink;
+      sink->source_compute();
+    }
+    break;
+  case COUNT_PATH_STATIC_SERIAL:
+    {
+      DetPathsDAGNode<StaticSerialNode>* sink = (DetPathsDAGNode<StaticSerialNode>*)params.sink;
+      sink->source_compute();
+    }
+    break;
+
+  case COUNT_PATH_DYNAMIC_NABBIT:
+  case COUNT_PATH_DYNAMIC_NABBIT_GEN:
+  case COUNT_PATH_DYNAMIC_SERIAL:
+  case COUNT_PATH_DYNAMIC_SERIAL_GEN:
+    {
+      assert(0);
+    }
+    break;
+  };
+
+  // Create a root and run the computation.
+
+  long end_time = example_get_time();    
+  int P = cilk::current_worker_count();
+
+  if (verbose) {
+    printf("%d, %d, %d;  // P, Test, WorkValue \n",
+	   cilk::current_worker_count(),
+	   test_type,
+	   params.WORK_VALUE);
+
+    printf("The result: %d\n",
+	   rt->GetResult());
+    printf("** Running time of dag count, (nodes = %d, edges = %d, R = %d): %f seconds **\n ",
+	   params.num_nodes,
+	   params.num_edges,
+	   params.MAX_DAG_ID,
+	   (end_time-start_time) / 1000.f);
+  }
+  else {
+    printf("%d, %d, %d, %d, %d, %d, %d, %d, %f, %f, %d // P, Test, WorkValue, UseParallelNodes, Nodes, Edges, R, PathLength, Time, Avg DagType\n",
+	   P,
+	   test_type,
+	   params.WORK_VALUE,
+	   params.nodes_with_parallelism,
+	   params.num_nodes,
+	   params.num_edges,
+	   params.MAX_DAG_ID,
+	   rt->GetPathLength(),
+	   (end_time - start_time)/1000.f,
+	   P*((end_time - start_time) * 1.0e6f / (params.num_nodes + params.num_edges)),
+	   params.dag_type);
+  }
+
+
+  // Don't check problems which last more than a minute...
+  if (P*(end_time - start_time) < 1000.0 * 60) {
+    CheckResult<DetPathsDAGNode<CountNode> >(rt, false);
+  }
+
+  if (verbose) {
+    printf("Completed check successfully\n");
+    printf("Average time per node/edge: %f (ns)\n",
+	   (end_time - start_time) * 1.0e6f / (params.num_nodes + params.num_edges));
+  }
+}
+
+
+template <class DynNodeType>
+void RunDynamicCountPathsTest(CountPathDAGParams& params,
+			      int test_type,
+			      bool verbose) {
+  if (verbose) {
+    printf("DAG_Max_id = %d\n",
+	   params.MAX_DAG_ID);
+    printf("DAG_Max_degree = %d\n",
+	   params.MAX_DEGREE);
+  }
+
+  long create_start_time, create_end_time;
+  create_start_time = example_get_time();
+  DynPathCountNode<DynNodeType>::GenerateTestDag(&params);
+  create_end_time = example_get_time();
+  
+  if (verbose) {
+    printf("Time to create DAG in seconds: %f\n",
+	   (create_end_time - create_start_time) / 1000.f);
+  }
+
+  DynPathCountNode<DynNodeType>* rt = (DynPathCountNode<DynNodeType>*)params.root;
+  
+  long start_time = example_get_time();
+  switch (test_type) {
+
+  case COUNT_PATH_STATIC_NABBIT:
+  case COUNT_PATH_STATIC_SERIAL:
+    {
+      assert(0);
+    }
+    break;
+
+  case COUNT_PATH_DYNAMIC_NABBIT:
+  case COUNT_PATH_DYNAMIC_NABBIT_GEN:
+  case COUNT_PATH_DYNAMIC_SERIAL:
+  case COUNT_PATH_DYNAMIC_SERIAL_GEN:
+    {
+      rt->init_root_and_compute(0);
+      if (params.use_multiple_roots) {
+	assert(params.root_keys);	
+	for (int i = 0; i < params.root_keys->size_estimate(); ++i) {
+	  long long k = (long long)params.root_keys->get(i);
+	  //	  printf("Calling init_root_and_compute for key %llu\n",
+	  //		 k);
+	  rt->init_root_and_compute(k);
+	}	
+      }
+    }
+    break;
+  };
+
+  // Create a root and run the computation.
+
+  long end_time = example_get_time();    
+  int P = cilk::current_worker_count();
+
+  if (verbose) {
+    printf("%d, %d, %d;  // P, Test, WorkValue \n",
+	   cilk::current_worker_count(),
+	   test_type,
+	   params.WORK_VALUE);
+
+    printf("The result: %d\n",
+	   rt->GetResult());
+    printf("** Running time of dag count, (nodes = %d, edges = %d, R = %d): %f seconds **\n ",
+	   params.num_nodes,
+	   params.num_edges,
+	   params.MAX_DAG_ID,
+	   (end_time-start_time) / 1000.f);
+  }
+  else {
+    printf("%d, %d, %d, %d, %d, %d, %d, %d, %f, %f, %d // P, Test, WorkValue, UseParallelNodes, Nodes, Edges, R, PathLength, Time, Avg DagType\n",
+	   P,
+	   test_type,
+	   params.WORK_VALUE,
+	   params.nodes_with_parallelism,
+	   params.num_nodes,
+	   params.num_edges,
+	   params.MAX_DAG_ID,
+	   rt->GetPathLength(),
+	   (end_time - start_time)/1000.f,
+	   P*((end_time - start_time) * 1.0e6f / (params.num_nodes + params.num_edges)),
+	   params.dag_type);
+  }
+
+
+  // Don't check problems which last more than a minute...
+  if (P*(end_time - start_time) < 1000.0 * 60) {
+    CheckResult<DynPathCountNode<DynNodeType> >(rt, false);
+  }
+
+  if (verbose) {
+    printf("Completed check successfully\n");
+    printf("Average time per node/edge: %f (ns)\n",
+	   (end_time - start_time) * 1.0e6f / (params.num_nodes + params.num_edges));
+  }
+}
+
+
+
+
+int cilk_main(int argc, char *argv[])
+{
+  int R = 100;
+  int test_type = 0;
+  int work_value = 1000;
+  bool verbose = false;
+  bool nodes_with_parallelism = true;
+  int dag_type = 0;
+  if (argc >= 2) {
+    R = atoi(argv[1]);
+  }
+  
+  if (argc >= 3) {
+    test_type = atoi(argv[2]);
+  }
+
+  if (argc >= 4) {
+    work_value = atoi(argv[3]);
+  }
+
+  if (argc >= 5) {
+    nodes_with_parallelism = (atoi(argv[4]) > 0);
+  }
+
+  if (argc >= 6) {
+    dag_type = atoi(argv[5]);    
+  }
+
+
+  
+
+  CountPathDAGParams params;
+  params.MAX_DAG_ID = R;
+  params.MAX_DEGREE = 10;
+  params.NUM_GEN = 3;
+  params.WORK_VALUE = work_value;
+  params.nodes_with_parallelism = nodes_with_parallelism;
+  params.dag_type = dag_type;
+  params.use_multiple_roots = false;
+  params.do_generate = false;
+  
+  if (dag_type == 0) {
+    params.PIPE_WIDTH = 0;
+    params.PIPE_LOOKAHEAD = 0;
+  }
+  else {
+    // Create a pipeline DAG.
+    params.PIPE_WIDTH = 4;
+    params.PIPE_LOOKAHEAD = params.MAX_DEGREE * params.PIPE_WIDTH;    
+  }
+
+ 
+  switch (test_type) {
+
+  case COUNT_PATH_STATIC_NABBIT:
+    {
+      if (verbose) {
+	printf("Running Static Nabbit path test\n");
+      }
+
+      params.use_random_online_map = false;
+      RunDetCountPathsTest<StaticNabbitNode>(params,
+				       test_type,
+				       verbose);
+      if (verbose) {
+	printf("How large is a StaticNabbitNode node? %zd\n",
+	       sizeof(StaticNabbitNode));
+	printf("How large is a StaticDetPathsNode? %zd\n",
+	       sizeof(DetPathsDAGNode<StaticNabbitNode>));
+      }
+    }
+    break;
+
+  case COUNT_PATH_STATIC_SERIAL:
+    {
+      if (verbose) {
+	printf("Running static serial path test\n");
+      }
+      params.use_random_online_map = false;
+      RunDetCountPathsTest<StaticSerialNode>(params,
+					   test_type,
+					   verbose);
+      if (verbose) {
+	printf("How large is a StaticSerialDAG? %zd\n",
+	       sizeof(StaticSerialNode));
+	printf("How large is a StaticSerial path node? %zd\n",
+	       sizeof(DetPathsDAGNode<StaticSerialNode>));
+      }
+    }
+    break;
+
+  case COUNT_PATH_DYNAMIC_SERIAL_GEN:
+    //    params.use_multiple_roots = true;
+      params.do_generate = true;
+
+      // Fall through
+  case COUNT_PATH_DYNAMIC_SERIAL:
+    {
+      if (verbose) {
+	printf("Running dynamic serial path test\n");
+      }
+
+      params.use_random_online_map = false;
+      RunDynamicCountPathsTest<DynamicSerialNode>(params,
+						  test_type,
+						  verbose);
+      if (verbose) {
+	printf("How large is a DynPathCountNode<Serial>? %zd\n",
+	       sizeof(DynPathCountNode<DynamicSerialNode>));
+      }
+
+      
+    }
+    break;
+    
+  case COUNT_PATH_DYNAMIC_NABBIT_GEN:
+    //    params.use_multiple_roots = true;
+      params.do_generate = true;
+      // Fall through!
+  case COUNT_PATH_DYNAMIC_NABBIT:
+    {
+      if (verbose) {
+	printf("Running dynamic Nabbit path test\n");
+      }
+
+      params.use_random_online_map = false;
+      RunDynamicCountPathsTest<DynamicNabbitNode>(params,
+						  test_type,
+						  verbose);
+      if (verbose) {
+	printf("How large is a DynPathCountNode? %zd\n",
+	       sizeof(DynPathCountNode<DynamicNabbitNode>));
+      }
+    }
+    break;
+
+  case COUNT_PATH_OTHER:
+    {
+    }
+    break;
+  }
+ 
+  
+  return 0;
+}
+
